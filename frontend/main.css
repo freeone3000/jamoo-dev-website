@@ -1,0 +1,19 @@
+body {
+    color: white;
+    background-color: black;
+}
+head ul {
+    list-style: none;
+}
+
+table {
+    margin-top: 1em;
+    border: 2px solid white;
+}
+thead {
+    font-weight: bold;
+}
+td {
+    padding: 0.2em;
+    border: 2px solid white;
+}
