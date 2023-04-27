@@ -72,19 +72,18 @@ fn handle_request_template(req: &mut Request) -> IronResult<Response> {
 
 //TODO Precache files, including partials
 fn handle_request_backend(config: &WebsiteConfig, template_name: &str) -> IronResult<Response> {
-    let template_path_dir = PathBuf::from(format!("{}/pages/", config.site_root));
+    let template_path_dir = PathBuf::from(format!("{}/templates/", config.site_root));
     let context = mustache::Context::new(template_path_dir);
 
-    let template_path = format!("{}.mustache", template_name);
+    let template_path = format!("pages/{}.mustache", template_name);
     let partials: HashMap<String, String> = HashMap::new();
 
-    println!("Rendering template {}", template_path);
     let template;
     match context.compile_path(&template_path) {
         Ok(t) => template = t,
         Err(e) => {
             println!("Error compiling template: {}", e);
-            return IronResult::Err(IronError::new(e, status::InternalServerError));
+            return Err(IronError::new(e, status::NotFound));
         }
     }
     let body = template.render_to_string(&partials).unwrap();
