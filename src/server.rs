@@ -1,8 +1,10 @@
 /** imports */
+
 use std::collections::HashMap;
+use std::convert::From;
 use std::fs;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use iron::{
     headers::*,
@@ -68,28 +70,24 @@ fn handle_request_template(req: &mut Request) -> IronResult<Response> {
     return handle_request_backend(config, template_name)
 }
 
+//TODO Precache files, including partials
 fn handle_request_backend(config: &WebsiteConfig, template_name: &str) -> IronResult<Response> {
-    let frontend_path = format!("{}/pages/{}.html", config.site_root, template_name);
-    let template_path = format!("{}/templates/{}.html", config.site_root, template_name);
+    let template_path_dir = PathBuf::from(format!("{}/pages/", config.site_root));
+    let context = mustache::Context::new(template_path_dir);
 
-    let body: String;
-    if Path::new(&template_path).exists() {
-        let mut file = fs::File::open(template_path).unwrap();
-        let mut data = String::new();
-        file.read_to_string(&mut data).unwrap();
+    let template_path = format!("{}.mustache", template_name);
+    let partials: HashMap<String, String> = HashMap::new();
 
-        let template = mustache::compile_str(&data).unwrap();
-        let mut bytes = vec![];
-        template.render(&mut bytes, &HashMap::<String, String>::new()).unwrap();
-        body = String::from_utf8(bytes).unwrap();
-    } else if Path::new(&frontend_path).exists() {
-        let mut file = fs::File::open(frontend_path).unwrap();
-        let mut data = String::new();
-        file.read_to_string(&mut data).unwrap();
-        body = data;
-    } else {
-        return Ok(Response::with((status::NotFound, "Template not found")))
+    println!("Rendering template {}", template_path);
+    let template;
+    match context.compile_path(&template_path) {
+        Ok(t) => template = t,
+        Err(e) => {
+            println!("Error compiling template: {}", e);
+            return IronResult::Err(IronError::new(e, status::InternalServerError));
+        }
     }
+    let body = template.render_to_string(&partials).unwrap();
     let mut resp = Response::with((status::Ok, body));
     resp.headers.set(ContentType(Mime(
         TopLevel::Text,
