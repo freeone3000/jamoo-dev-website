@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: jamoo-dev
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jamoo-website-dev
+  namespace: jamoo-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jamoo-website-dev
+  template:
+    metadata:
+      labels:
+        app: jamoo-website-dev
+    spec:
+      containers:
+        - name: jamoo-website-dev
+          image: localhost:5001/jamoo-website-dev:latest
+          ports:
+            - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jamoo-website-dev
+  namespace: jamoo-dev
+spec:
+    selector:
+        app: jamoo-website-dev
+    ports:
+      - protocol: TCP
+        port: 80
+        targetPort: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: jamoo-website-dev
+  namespace: jamoo-dev
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: jamoo.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: jamoo-website-dev
+                port:
+                  number: 80
