@@ -101,7 +101,7 @@ where
     match context.compile_path(&template_path) {
         Ok(t) => template = t,
         Err(e) => {
-            println!("Error compiling template: {}", e);
+            println!("Error compiling template at {}: {}", template_path, e);
             return Err(IronError::new(e, status::NotFound));
         }
     }

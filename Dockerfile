@@ -4,8 +4,7 @@ COPY . .
 RUN cargo build --release
 
 FROM alpine:3.17
+WORKDIR /website
 COPY --from=builder /target/release/jamoo-website-dev .
-COPY static /static
-COPY templates /templates
 EXPOSE 3000
 CMD ["./jamoo-website-dev"]

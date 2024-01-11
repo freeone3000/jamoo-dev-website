@@ -1,2 +1,8 @@
 target/
 deploy/
+posts/
+static/
+templates/
+run.sh
+.dockerignore
+Dockerfile
