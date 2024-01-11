@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
-use iron::url;
 use itertools::Itertools;
 use anyhow::{Context, Result};
+use crate::util;
 use crate::util::system_time_to_date_time;
 
 pub(crate) const POSTS_ROOT: &str = "posts";
@@ -16,7 +16,9 @@ pub(crate) struct Post {
 impl Post {
     pub(crate) fn from_path(request_path: &str) -> Result<Self> {
         let mut path = PathBuf::from(POSTS_ROOT);
-        path.push(request_path);
+        let decoded_path = util::my_urldecode(request_path.chars())?;
+        path.push(String::from_utf8(decoded_path)?);
+
         let original_fn = path.file_name().ok_or(anyhow::anyhow!("Cannot convert path from blog request"))?.to_owned();
         let title = {
             let entry_as_str = String::from_utf8_lossy(original_fn.as_encoded_bytes());
@@ -31,7 +33,8 @@ impl Post {
     }
 
     pub(crate) fn url_path(&self) -> String {
-        let s = url::form_urlencoded::byte_serialize(self.original_fn.as_encoded_bytes()).collect::<String>();
+        let bytes = (*self.original_fn).as_encoded_bytes();
+        let s = util::my_urlencode(&bytes);
         POSTS_ROOT.to_string() + "/" + &s
     }
 }
@@ -103,21 +106,7 @@ pub(crate) fn render(post: Post) -> Result<RenderedPost> {
             ..CompileOptions::default()
         }
     };
-    let file_contents = {
-        match fs::read_to_string(&post.path) {
-            Ok(contents) => Ok(contents),
-            Err(e) => {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    // try again with plus signs as spaces
-                    let path_no_spaces = &post.path.to_str().map(|s| s.replace("+", " ")).ok_or(anyhow::anyhow!("Failed to convert path to string"))?;
-                    fs::read_to_string(path_no_spaces).with_context(|| format!("Reading path: {:#?}", path_no_spaces))
-                } else {
-                    Err(e).with_context(|| format!("Reading path: {:#?}", post.path))
-                }
-            }
-        }
-    }?;
-
+    let file_contents = fs::read_to_string(&post.path).with_context(|| format!("Reading path: {:#?}", post.path))?;
     let body = markdown::to_html_with_options(&file_contents, &options)
         .map_err(|e| anyhow::anyhow!("Failed to render post {}: {}", post.path.display(), e))?;
 
