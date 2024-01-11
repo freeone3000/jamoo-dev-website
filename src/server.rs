@@ -13,10 +13,13 @@ use iron::{
     prelude::*
 };
 use router::Router;
+use log::trace;
 use crate::blog;
+use crate::blog::Post;
+use crate::rss_build::generate_rss_doc;
 
 /** exports */
-#[derive(Clone)] // TODO REMOVE!!
+#[derive(Clone)]
 pub struct WebsiteConfig {
     pub site_root: String,
     pub listen_address: String,
@@ -27,7 +30,10 @@ pub fn serve(config: WebsiteConfig) {
 
     let mut router = Router::new();
 
-    router.get("/", handle_blog_request, "template_index");
+    router.get("/", handle_blog_index_request, "template_blog_index");
+    router.get("/rss.xml", handle_rss_request, "rss");
+
+    router.get(format!("/{}/:post", blog::POSTS_ROOT), handle_blog_request, "template_blog_post");
     router.get("/pages/:template", handle_request_template, "template_non_index");
     router.get("/static/:file", handle_static_file, "static_file");
 
@@ -63,11 +69,33 @@ impl iron::middleware::BeforeMiddleware for WebsiteConfigMiddleware {
 
 
 /** actual routing */
-fn handle_blog_request(req: &mut Request) -> IronResult<Response> {
+fn handle_rss_request(req: &mut Request) -> IronResult<Response> {
     let config = get_config(req).unwrap();
 
-    let posts = blog::newest_posts(5, std::time::SystemTime::UNIX_EPOCH);
-    let rendered_posts = posts.into_iter().map(|post| blog::render(&post)).collect::<Result<Vec<String>, _>>();
+    let posts = blog::newest_posts(&config.site_root, usize::MAX, std::time::SystemTime::UNIX_EPOCH);
+    match generate_rss_doc(&posts) {
+        Ok(rss) => {
+            let mut resp = Response::with((status::Ok, rss));
+            resp.headers.set(ContentType(Mime(
+                TopLevel::Application,
+                SubLevel::Xml,
+                vec![]
+            )));
+            Ok(resp)
+        }
+        Err(e) => {
+            Ok(Response::with((status::InternalServerError, format!("Error generating rss: {}", e))))
+        }
+    }
+}
+
+fn handle_blog_index_request(req: &mut Request) -> IronResult<Response> {
+    let config = get_config(req).unwrap();
+
+    let posts = blog::newest_posts(&config.site_root, 5, std::time::SystemTime::UNIX_EPOCH);
+    let rendered_posts = posts.into_iter()
+        .map(|post| blog::render(post).map(|post| post.into()))
+        .collect::<Result<Vec<HashMap<_, _>>, _>>();
     match rendered_posts {
         Ok(rendered_posts) => {
             let mut params = HashMap::new();
@@ -77,6 +105,25 @@ fn handle_blog_request(req: &mut Request) -> IronResult<Response> {
         Err(e) => {
             Ok(Response::with((status::InternalServerError, format!("Error rendering posts: {}", e))))
         }
+    }
+}
+
+fn handle_blog_request(req: &mut Request) -> IronResult<Response> {
+    trace!("Handling blog request");
+    let config = get_config(req).unwrap();
+    let post_name = req.extensions.get::<Router>().and_then(|r| r.find("post"));
+    if let Some(post_name) = post_name {
+        let post = Post::from_path(post_name).and_then(|post| blog::render(post));
+        match post {
+            Ok(rendered_post) => {
+                let mut params: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
+                params.insert("posts".to_string(), vec![rendered_post.into()]);
+                handle_request_backend(config, "blog", Some(params))
+            },
+            Err(e) => Ok(Response::with((status::InternalServerError, format!("Error rendering post: {}", e))))
+        }
+    } else {
+        handle_blog_index_request(req)
     }
 }
 

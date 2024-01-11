@@ -1,5 +1,7 @@
 mod server;
 mod blog;
+mod rss_build;
+mod util;
 
 extern crate iron;
 extern crate mustache;
