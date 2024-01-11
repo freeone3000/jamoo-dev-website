@@ -39,5 +39,15 @@ pub(crate) fn newest_posts(limit: usize, start_at: std::time::SystemTime) -> Vec
 }
 
 pub(crate) fn render(post: &Post) -> Result<String, anyhow::Error> {
-    Ok(markdown::to_html(fs::read_to_string(&post.path)?.as_str()))
+    use markdown::{Options, ParseOptions, CompileOptions};
+    let options = Options {
+        parse: ParseOptions::default(),
+        compile: CompileOptions {
+            allow_dangerous_html: true,
+            allow_dangerous_protocol: true,
+            ..CompileOptions::default()
+        }
+    };
+    markdown::to_html_with_options(fs::read_to_string(&post.path)?.as_str(), &options)
+        .map_err(|e| anyhow::anyhow!("Failed to render post {}: {}", post.path.display(), e))
 }
