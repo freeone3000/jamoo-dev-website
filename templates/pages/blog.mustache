@@ -5,6 +5,12 @@
 
 <h1>Jasmine Moore's Blog</h1>
 
-(No posts here yet)
+{{#posts}}
+    <hr>
+    {{{.}}}
+{{/posts}}
+{{^posts}}
+<p>(No posts here yet)</p>
+{{/posts}}
 </body>
 </html>

@@ -3,9 +3,13 @@ name = "jamoo-website-dev"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+# routing dependencies
 iron = "0.6.1"
 mustache = "0.9.0"
 router = "0.6.0"
+markdown = "1.0.0-alpha.16"
+serde = "1.0.195"
+# common dependencies
+itertools = "0.12.0"
+anyhow = "1.0.79"

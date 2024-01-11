@@ -13,17 +13,21 @@ use iron::{
     prelude::*
 };
 use router::Router;
+use crate::blog;
 
 /** exports */
 #[derive(Clone)] // TODO REMOVE!!
 pub struct WebsiteConfig {
-    pub site_root: String
+    pub site_root: String,
+    pub listen_address: String,
 }
 
 pub fn serve(config: WebsiteConfig) {
+    let listen_address = config.listen_address.clone();
+
     let mut router = Router::new();
 
-    router.get("/", handle_request_indexed, "template_index");
+    router.get("/", handle_blog_request, "template_index");
     router.get("/pages/:template", handle_request_template, "template_non_index");
     router.get("/static/:file", handle_static_file, "static_file");
 
@@ -33,7 +37,7 @@ pub fn serve(config: WebsiteConfig) {
     };
     chain.link_before(config_middleware);
 
-    Iron::new(chain).http("0.0.0.0:3000").unwrap();
+    Iron::new(chain).http(listen_address).unwrap();
 }
 
 /* middleware */
@@ -59,24 +63,39 @@ impl iron::middleware::BeforeMiddleware for WebsiteConfigMiddleware {
 
 
 /** actual routing */
-fn handle_request_indexed(req: &mut Request) -> IronResult<Response> {
+fn handle_blog_request(req: &mut Request) -> IronResult<Response> {
     let config = get_config(req).unwrap();
-    return handle_request_backend(config, "index")
+
+    let posts = blog::newest_posts(5, std::time::SystemTime::UNIX_EPOCH);
+    let rendered_posts = posts.into_iter().map(|post| blog::render(&post)).collect::<Result<Vec<String>, _>>();
+    match rendered_posts {
+        Ok(rendered_posts) => {
+            let mut params = HashMap::new();
+            params.insert("posts".to_string(), rendered_posts);
+            handle_request_backend(config, "blog", Some(params))
+        }
+        Err(e) => {
+            Ok(Response::with((status::InternalServerError, format!("Error rendering posts: {}", e))))
+        }
+    }
 }
 
 fn handle_request_template(req: &mut Request) -> IronResult<Response> {
     let config = get_config(req).unwrap();
-    let ref template_name = req.extensions.get::<Router>().unwrap().find("template").unwrap_or("/");
-    return handle_request_backend(config, template_name)
+    let template_name = req.extensions.get::<Router>().unwrap().find("template").unwrap_or("/");
+    return handle_request_backend::<String>(config, template_name, None)
 }
 
-//TODO Precache files, including partials
-fn handle_request_backend(config: &WebsiteConfig, template_name: &str) -> IronResult<Response> {
+fn handle_request_backend<T>(config: &WebsiteConfig,
+                             template_name: &str,
+                             params: Option<HashMap<String, T>>) -> IronResult<Response>
+where
+    T: serde::Serialize,
+{
     let template_path_dir = PathBuf::from(format!("{}/templates/", config.site_root));
     let context = mustache::Context::new(template_path_dir);
 
     let template_path = format!("pages/{}.mustache", template_name);
-    let partials: HashMap<String, String> = HashMap::new();
 
     let template;
     match context.compile_path(&template_path) {
@@ -86,7 +105,7 @@ fn handle_request_backend(config: &WebsiteConfig, template_name: &str) -> IronRe
             return Err(IronError::new(e, status::NotFound));
         }
     }
-    let body = template.render_to_string(&partials).unwrap();
+    let body = template.render_to_string(&params).unwrap();
     let mut resp = Response::with((status::Ok, body));
     resp.headers.set(ContentType(Mime(
         TopLevel::Text,
