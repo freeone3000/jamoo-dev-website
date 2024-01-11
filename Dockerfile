@@ -1,5 +1,6 @@
 # syntax=docker/dockerfile:1
-FROM rust:1.69.0-alpine3.17 as builder
+FROM rust:1.74-alpine3.18 as builder
+RUN apk add --no-cache musl-dev
 COPY . .
 RUN cargo build --release
 
