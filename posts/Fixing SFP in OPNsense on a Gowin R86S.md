@@ -1,9 +1,8 @@
-# SFP on OPNSense
 ## Background
 
 I purchased a mini-PC to use as a firewall / replacement router for my ISP. Unfortunately, its SFP+ modules were not detected under opnsense, even when connected via DAC to its on-"rack" switch. Let's get to the bottom of this!
 
-The router in question is a [Gowin R86S](https://www.servethehome.com/the-gowin-r86s-revolution-low-power-2-5gbe-and-10gbe-intel-nvidia/#comment-496131). The switch is a [Mokerlink 8-port ethernet switch](https://www.mokerlink.com/index.php?route=product/product&product_id=520), which has 8 2.5GBe ports plus an additional SFP port at 10GB. They are connected with a SFP DAC cable, which is simply a SFP port-to-port connection and is very cheap (cheaper than cat6!).
+The router in question is a [Gowin R86S](https://www.servethehome.com/the-gowin-r86s-revolution-low-power-2-5gbe-and-10gbe-intel-nvidia/#comment-496131). The switch is a [Mokerlink 8-port ethernet switch](https://www.mokerlink.com/index.php?route=product/product&product_id=520), which has 8 2.5GBe ports plus an additional SFP port at 10GB. They are connected with an SFP DAC cable, which is simply an SFP port-to-port connection and is very cheap (cheaper than cat6!).
 The second SFP port can be used to add a connection to the downstairs rack through in-home cable (or the reverse!) fairly cheaply, but that will be a project for another day. Success here will be defined as the SFP interface recognized by opnsense and added to the LAN interface as a downstream switch.
 
 ## User Setup
