@@ -1,8 +1,24 @@
 body {
     color: white;
     background-color: black;
+    font-family: Calibri, "Noto Sans", sans-serif;
+    line-height: 1.15em;
 }
-head ul {
+h1, h2, h3, h4, h5 {
+    font-family: Cambria, serif;
+}
+code {
+    font-family: Consolas, "Liberation Mono", "Noto Sans Mono", monospace;
+}
+article {
+    max-width: 120em;
+    margin: auto;
+}
+hr:has(+ article), article+hr {
+    width: 20%;
+}
+
+header ul {
     list-style: none;
 }
 
