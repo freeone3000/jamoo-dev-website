@@ -2,6 +2,8 @@ mod server;
 mod blog;
 mod rss_build;
 mod util;
+mod compress;
+mod negotation;
 
 extern crate iron;
 extern crate mustache;

@@ -12,6 +12,8 @@ markdown = "1.0.0-alpha.16"
 serde = "1.0.195"
 chrono = "0.4.31"
 rss = { version = "2.0", features = ["serde"] }
+# server features we're re-implementing
+flate2 = "1.0.28"
 # common dependencies
 itertools = "0.12.0"
 anyhow = "1.0.79"

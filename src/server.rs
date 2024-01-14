@@ -17,6 +17,7 @@ use router::Router;
 use log::trace;
 use crate::blog;
 use crate::blog::Post;
+use crate::compress::CompressMiddleware;
 use crate::rss_build::generate_rss_doc;
 
 /** exports */
@@ -39,10 +40,10 @@ pub fn serve(config: WebsiteConfig) {
     router.get("/static/:file", handle_static_file, "static_file");
 
     let mut chain = Chain::new(router);
-    let config_middleware = WebsiteConfigMiddleware {
+    chain.link_before(WebsiteConfigMiddleware {
         config,
-    };
-    chain.link_before(config_middleware);
+    });
+    chain.link_around(CompressMiddleware::new());
 
     Iron::new(chain).http(listen_address).unwrap();
 }
