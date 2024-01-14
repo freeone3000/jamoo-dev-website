@@ -1,6 +1,13 @@
+use std::path::Path;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::Result;
+
+pub(crate) fn path_time_modified(path: &Path) -> SystemTime {
+    path.metadata()
+        .and_then(|metadata| metadata.modified())
+        .unwrap_or(UNIX_EPOCH)
+}
 
 pub(crate) fn system_time_to_date_time(t: SystemTime) -> Option<DateTime<Utc>> {
     // secs is already relative to utc after this match

@@ -19,7 +19,7 @@ impl Post {
         let decoded_path = util::my_urldecode(request_path.chars())?;
         path.push(String::from_utf8(decoded_path)?);
 
-
+        let post_date = util::path_time_modified(&path);
         let original_fn = path.file_name().ok_or(anyhow::anyhow!("Cannot convert path from blog request"))?.to_owned();
         let title = {
             let entry_as_str = String::from_utf8_lossy(original_fn.as_encoded_bytes());
@@ -29,7 +29,7 @@ impl Post {
             title,
             path,
             original_fn,
-            post_date: std::time::SystemTime::UNIX_EPOCH,
+            post_date,
         })
     }
 
