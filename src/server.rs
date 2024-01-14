@@ -12,6 +12,7 @@ use iron::{
     mime::{Mime, SubLevel, TopLevel},
     prelude::*
 };
+use iron::mime::{Attr, Value};
 use router::Router;
 use log::trace;
 use crate::blog;
@@ -157,7 +158,7 @@ where
     resp.headers.set(ContentType(Mime(
         TopLevel::Text,
         SubLevel::Html,
-        vec![]
+        vec![(Attr::Charset, Value::Utf8)]
     )));
     Ok(resp)
 }
@@ -183,13 +184,13 @@ fn mime_type_for_file(filename: &str) -> Mime {
         Mime(
             TopLevel::Text,
             SubLevel::Css,
-            vec![]
+            vec![(Attr::Charset, Value::Utf8)]
         )
     } else {
         Mime(
             TopLevel::Text,
             SubLevel::Plain,
-            vec![]
+            vec![(Attr::Charset, Value::Utf8)]
         )
     }
 }
