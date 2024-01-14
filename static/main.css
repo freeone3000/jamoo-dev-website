@@ -1,3 +1,6 @@
+@charset "utf-8";
+
+/* general */
 body {
     color: white;
     background-color: black;
@@ -7,6 +10,14 @@ body {
 h1, h2, h3, h4, h5 {
     font-family: Cambria, serif;
 }
+a {
+    color: #0077aa;
+}
+a:visited {
+    color: #ca1a70;
+}
+
+/* blog help */
 code {
     font-family: Consolas, "Liberation Mono", "Noto Sans Mono", monospace;
 }
@@ -14,8 +25,20 @@ article {
     max-width: 120em;
     margin: auto;
 }
+article>h1 {
+    font-size: xxx-large;
+}
+article>h1:has(+ p) {
+    margin-bottom: 0.4em;
+}
+article>h1 + p {
+    margin-top: 0;
+    font-style: italic;
+    font-size: small;
+}
 hr:has(+ article), article+hr {
-    width: 20%;
+    width: 90%;
+    min-width: 120em;
 }
 
 header ul {
