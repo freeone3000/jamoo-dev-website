@@ -3,7 +3,7 @@ use crate::util::system_time_to_date_time;
 
 type Result<T> = std::result::Result<T, anyhow::Error>;
 
-pub(crate) fn generate_rss_doc(posts: &[Post]) -> Result<String> {
+pub(crate) fn generate_rss_doc(posts: &[Post]) -> Result<rss::Channel> {
     let mut rss = rss::ChannelBuilder::default()
         .title("Behind the Curtain: Solving Your Own Problems with Code")
         .link("https://jamoo.dev")
@@ -22,5 +22,5 @@ pub(crate) fn generate_rss_doc(posts: &[Post]) -> Result<String> {
         rss.items.push(item);
     }
 
-    Ok(rss.to_string())
+    Ok(rss)
 }

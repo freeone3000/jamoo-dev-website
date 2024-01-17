@@ -1,197 +1,106 @@
 /** imports */
-
 use std::collections::HashMap;
 use std::convert::From;
-use std::fs;
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 
-use iron::{
-    headers::*,
-    status,
-    mime::{Mime, SubLevel, TopLevel},
-    prelude::*
-};
-use iron::mime::{Attr, Value};
-use router::Router;
-use log::trace;
+use axum::extract::{Path, State};
+use axum::http::{header, HeaderMap, StatusCode};
+use axum::response::{Html, IntoResponse, Response};
+
 use crate::blog;
 use crate::blog::Post;
-use crate::compress::CompressMiddleware;
+use crate::config::WebsiteConfig;
 use crate::rss_build::generate_rss_doc;
 
-/** exports */
-#[derive(Clone)]
-pub struct WebsiteConfig {
-    pub site_root: String,
-    pub listen_address: String,
+struct ErrorResponse {
+    error: String,
 }
-
-pub fn serve(config: WebsiteConfig) {
-    let listen_address = config.listen_address.clone();
-
-    let mut router = Router::new();
-
-    router.get("/", handle_blog_index_request, "template_blog_index");
-    router.get("/rss.xml", handle_rss_request, "rss");
-
-    router.get(format!("/{}/:post", blog::POSTS_ROOT), handle_blog_request, "template_blog_post");
-    router.get("/pages/:template", handle_request_template, "template_non_index");
-    router.get("/static/:file", handle_static_file, "static_file");
-
-    let mut chain = Chain::new(router);
-    chain.link_before(WebsiteConfigMiddleware {
-        config,
-    });
-    chain.link_around(CompressMiddleware::new());
-
-    Iron::new(chain).http(listen_address).unwrap();
-}
-
-/* middleware */
-fn get_config<'a, 'b: 'a>(req: &'a Request<'a, 'b>) -> Option<&'a WebsiteConfig> {
-    req.extensions.get::<WebsiteConfig>()
-}
-struct WebsiteConfigMiddleware {
-    config: WebsiteConfig,
-}
-impl iron::typemap::Key for WebsiteConfig {
-    type Value = WebsiteConfig;
-}
-impl iron::middleware::BeforeMiddleware for WebsiteConfigMiddleware {
-    fn before(&self, req: &mut Request) -> IronResult<()> {
-        req.extensions.entry::<WebsiteConfig>().or_insert(self.config.clone());
-        Ok(())
+// best we can do pending https://github.com/rust-lang/rust/issues/31844
+impl<E: std::fmt::Debug + std::fmt::Display > From<E> for ErrorResponse {
+    fn from(error: E) -> Self {
+        ErrorResponse {
+            error: format!("Error: {:?}", error)
+        }
     }
+}
+impl IntoResponse for ErrorResponse {
+    fn into_response(self) -> Response<axum::body::Body> {
+        let body = format!("Error: {}", self.error);
+        (StatusCode::INTERNAL_SERVER_ERROR, body).into_response()
+    }
+}
+type Result<T> = std::result::Result<T, ErrorResponse>;
 
-    fn catch(&self, _: &mut Request, err: IronError) -> IronResult<()> {
-        Err(err)
+/** wrapper around xml */
+struct ChannelResponse(rss::Channel);
+impl IntoResponse for ChannelResponse {
+    fn into_response(self) -> Response<axum::body::Body> {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::CONTENT_TYPE, "application/xml".parse().unwrap());
+        (headers, self.0.to_string()).into_response()
     }
 }
 
+/** entry point */
+pub(crate) fn make_app<T: 'static>(config: T) -> axum::Router where T: WebsiteConfig + Clone {
+    use tower_http::{services, compression::CompressionLayer};
+    use axum::{routing::get, Router};
+
+    Router::new()
+        .route("/", get(handle_blog_index_request::<T>))
+        .route("/rss.xml", get(handle_rss_request::<T>))
+        .route(format!("/{}/:post", blog::POSTS_ROOT).as_str(), get(handle_blog_request::<T>))
+        .route("/pages/:template", get(handle_request_template::<T>))
+        .nest_service("/static", services::ServeDir::new("static"))
+        .with_state(config)
+        .layer(CompressionLayer::new())
+}
 
 /** actual routing */
-fn handle_rss_request(req: &mut Request) -> IronResult<Response> {
-    let config = get_config(req).unwrap();
-
-    let posts = blog::newest_posts(&config.site_root, usize::MAX, std::time::SystemTime::UNIX_EPOCH);
-    match generate_rss_doc(&posts) {
-        Ok(rss) => {
-            let mut resp = Response::with((status::Ok, rss));
-            resp.headers.set(ContentType(Mime(
-                TopLevel::Application,
-                SubLevel::Xml,
-                vec![]
-            )));
-            Ok(resp)
-        }
-        Err(e) => {
-            Ok(Response::with((status::InternalServerError, format!("Error generating rss: {}", e))))
-        }
-    }
+async fn handle_rss_request<C: WebsiteConfig>(State(config): State<C>) -> Result<ChannelResponse> {
+    let posts = blog::newest_posts(&config.get_site_root(), usize::MAX, std::time::SystemTime::UNIX_EPOCH);
+    let rss = generate_rss_doc(&posts)?;
+    Ok(ChannelResponse(rss))
 }
 
-fn handle_blog_index_request(req: &mut Request) -> IronResult<Response> {
-    let config = get_config(req).unwrap();
 
-    let posts = blog::newest_posts(&config.site_root, 5, std::time::SystemTime::UNIX_EPOCH);
+async fn handle_blog_index_request<C: WebsiteConfig>(State(config): State<C>) -> Result<Html<String>> {
+    let posts = blog::newest_posts(&config.get_site_root(), 5, std::time::SystemTime::UNIX_EPOCH);
+
     let rendered_posts = posts.into_iter()
         .map(|post| blog::render(post).map(|post| post.into()))
-        .collect::<Result<Vec<HashMap<_, _>>, _>>();
-    match rendered_posts {
-        Ok(rendered_posts) => {
-            let mut params = HashMap::new();
-            params.insert("posts".to_string(), rendered_posts);
-            handle_request_backend(config, "blog", Some(params))
-        }
-        Err(e) => {
-            Ok(Response::with((status::InternalServerError, format!("Error rendering posts: {}", e))))
-        }
-    }
+        .collect::<std::result::Result<Vec<HashMap<_, _>>, _>>()?;
+
+    let mut params = HashMap::new();
+    params.insert("posts".to_string(), rendered_posts);
+    handle_request_backend(&config, "blog", Some(params)).await
 }
 
-fn handle_blog_request(req: &mut Request) -> IronResult<Response> {
-    trace!("Handling blog request");
-    let config = get_config(req).unwrap();
-    let post_name = req.extensions.get::<Router>().and_then(|r| r.find("post"));
-    if let Some(post_name) = post_name {
-        let post = Post::from_path(post_name).and_then(|post| blog::render(post));
-        match post {
-            Ok(rendered_post) => {
-                let mut params: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
-                params.insert("posts".to_string(), vec![rendered_post.into()]);
-                handle_request_backend(config, "blog", Some(params))
-            },
-            Err(e) => Ok(Response::with((status::InternalServerError, format!("Error rendering post: {}", e))))
-        }
-    } else {
-        handle_blog_index_request(req)
-    }
+async fn handle_blog_request<C: WebsiteConfig>(State(config): State<C>, Path(post): Path<String>) -> Result<Html<String>> {
+    let post = Post::from_path(&post).and_then(|post| blog::render(post))?;
+
+    let mut params: HashMap<String, Vec<HashMap<String, String>>> = HashMap::new();
+    params.insert("posts".to_string(), vec![post.into()]);
+    handle_request_backend(&config, "blog", Some(params)).await
 }
 
-fn handle_request_template(req: &mut Request) -> IronResult<Response> {
-    let config = get_config(req).unwrap();
-    let template_name = req.extensions.get::<Router>().unwrap().find("template").unwrap_or("/");
-    return handle_request_backend::<String>(config, template_name, None)
+async fn handle_request_template<C: WebsiteConfig>(State(config): State<C>, Path(template): Path<String>) -> Result<Html<String>> {
+    handle_request_backend::<C, String>(&config, &template, None).await
 }
 
-fn handle_request_backend<T>(config: &WebsiteConfig,
+async fn handle_request_backend<C, T>(config: &C,
                              template_name: &str,
-                             params: Option<HashMap<String, T>>) -> IronResult<Response>
+                             params: Option<HashMap<String, T>>) -> Result<Html<String>>
 where
+    C: WebsiteConfig,
     T: serde::Serialize,
 {
-    let template_path_dir = PathBuf::from(format!("{}/templates/", config.site_root));
+    let template_path_dir = PathBuf::from(format!("{}/templates/", config.get_site_root()));
     let context = mustache::Context::new(template_path_dir);
 
     let template_path = format!("pages/{}.mustache", template_name);
 
-    let template;
-    match context.compile_path(&template_path) {
-        Ok(t) => template = t,
-        Err(e) => {
-            println!("Error compiling template at {}: {}", template_path, e);
-            return Err(IronError::new(e, status::NotFound));
-        }
-    }
-    let body = template.render_to_string(&params).unwrap();
-    let mut resp = Response::with((status::Ok, body));
-    resp.headers.set(ContentType(Mime(
-        TopLevel::Text,
-        SubLevel::Html,
-        vec![(Attr::Charset, Value::Utf8)]
-    )));
-    Ok(resp)
-}
-
-fn handle_static_file(req: &mut Request) -> IronResult<Response> {
-    let ref filename = req.extensions.get::<Router>().unwrap().find("file").unwrap_or("/");
-    let config = get_config(req).unwrap();
-    let path = format!("{}/static/{}", config.site_root, filename);
-    if !Path::new(&path).exists() {
-        return Ok(Response::with((status::NotFound, "File not found")))
-    }
-
-    let mut file = fs::File::open(path).unwrap();
-    let mut data = String::new();
-    file.read_to_string(&mut data).unwrap();
-    let mut resp = Response::with((status::Ok, data));
-    resp.headers.set(ContentType(mime_type_for_file(filename)));
-    Ok(resp)
-}
-
-fn mime_type_for_file(filename: &str) -> Mime {
-    if filename.ends_with(".css") {
-        Mime(
-            TopLevel::Text,
-            SubLevel::Css,
-            vec![(Attr::Charset, Value::Utf8)]
-        )
-    } else {
-        Mime(
-            TopLevel::Text,
-            SubLevel::Plain,
-            vec![(Attr::Charset, Value::Utf8)]
-        )
-    }
+    let template = context.compile_path(&template_path)?;
+    let body = template.render_to_string(&params)?;
+    Ok(Html::from(body))
 }
