@@ -98,15 +98,14 @@ impl From<RenderedPost> for std::collections::HashMap<String, String> {
 }
 
 pub(crate) fn render(post: Post) -> Result<RenderedPost> {
-    use markdown::{Options, ParseOptions, CompileOptions};
-    let options = Options {
-        parse: ParseOptions::default(),
-        compile: CompileOptions {
-            allow_dangerous_html: true,
-            allow_dangerous_protocol: true,
-            ..CompileOptions::default()
-        }
+    use markdown::{Options, CompileOptions};
+    let mut options = Options::gfm();
+    options.compile = CompileOptions {
+        allow_dangerous_html: true,
+        allow_dangerous_protocol: true,
+        ..options.compile
     };
+
     let file_contents = fs::read_to_string(&post.path).with_context(|| format!("Reading path: {:#?}", post.path))?;
     let body = markdown::to_html_with_options(&file_contents, &options)
         .map_err(|e| anyhow::anyhow!("Failed to render post {}: {}", post.path.display(), e))?;
